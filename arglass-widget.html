@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Arglass — Калькулятор-визуализатор навеса</title>
+
+<!-- Tailwind (CDN) -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Three.js + OrbitControls (CDN, r128 UMD) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<style>
+  html, body { height: 100%; margin: 0; }
+  /* Светлый градиентный фон сцены, чтобы чёрный каркас был хорошо виден */
+  #viewport {
+    background: linear-gradient(160deg, #dbeafe 0%, #eef2f7 55%, #e2e8f0 100%);
+  }
+  input[type="range"] { accent-color: #0f172a; }
+  .bom-row td { padding: 4px 8px; }
+  .scroll::-webkit-scrollbar { width: 8px; }
+  .scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+</style>
+</head>
+
+<body class="bg-slate-100 text-slate-800">
+
+<!-- ======================= ШАПКА ======================= -->
+<header class="bg-slate-900 text-white px-5 py-3 flex flex-wrap items-center justify-between gap-3 shadow">
+  <div class="flex items-center gap-3">
+    <div class="text-xl font-bold tracking-wide">ARGLASS</div>
+    <div class="text-slate-400 text-sm hidden sm:block">Стеклянные навесы · калькулятор</div>
+  </div>
+  <div class="flex items-center gap-6">
+    <div class="text-right">
+      <div class="text-[11px] uppercase tracking-wider text-slate-400">Итоговая стоимость</div>
+      <div id="totalPrice" class="text-2xl font-extrabold text-emerald-400 leading-tight">$0</div>
+    </div>
+    <div class="text-right border-l border-slate-700 pl-6">
+      <div class="text-[11px] uppercase tracking-wider text-slate-400">Цена за м²</div>
+      <div id="pricePerM2" class="text-2xl font-extrabold text-sky-300 leading-tight">$0</div>
+    </div>
+  </div>
+</header>
+
+<!-- ======================= ТЕЛО ======================= -->
+<div class="flex flex-col lg:flex-row" style="height: calc(100vh - 60px);">
+
+  <!-- ЛЕВАЯ ПАНЕЛЬ -->
+  <aside class="w-full lg:w-[420px] bg-white border-r border-slate-200 overflow-y-auto scroll p-5 space-y-5">
+
+    <!-- Контролы -->
+    <section class="space-y-4">
+      <h2 class="text-sm font-bold uppercase tracking-wider text-slate-500">Параметры конструкции</h2>
+
+      <!-- Тип -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Тип конструкции</label>
+        <select id="type" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <option value="wall">Пристенный</option>
+          <option value="free">Отдельностоящий</option>
+        </select>
+      </div>
+
+      <!-- Материал -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Материал каркаса</label>
+        <select id="material" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <option value="steel">Металл (сталь, чёрный профиль)</option>
+          <option value="alu">Алюминий (150-я серия)</option>
+        </select>
+      </div>
+
+      <!-- Стекло -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Тип стекла</label>
+        <select id="glass" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <option value="clear">Прозрачное</option>
+          <option value="bronze">Тонированное (бронза)</option>
+          <option value="graphite">Тонированное (графит)</option>
+        </select>
+      </div>
+
+      <!-- Ширина -->
+      <div>
+        <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
+          <span>Ширина, W</span><span id="wVal">6.00 м</span>
+        </div>
+        <input id="W" type="range" min="2" max="12" step="0.1" value="6" class="w-full" />
+      </div>
+
+      <!-- Вылет -->
+      <div>
+        <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
+          <span>Вылет, D</span><span id="dVal">3.00 м</span>
+        </div>
+        <input id="D" type="range" min="2" max="8" step="0.1" value="3" class="w-full" />
+      </div>
+
+      <!-- Высота -->
+      <div>
+        <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
+          <span>Высота (высокая часть), H</span><span id="hVal">3.00 м</span>
+        </div>
+        <input id="H" type="range" min="2.2" max="4" step="0.05" value="3" class="w-full" />
+      </div>
+
+      <!-- Доставка -->
+      <div>
+        <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
+          <span>Доставка</span><span id="kmVal">50 км</span>
+        </div>
+        <input id="km" type="range" min="0" max="400" step="5" value="50" class="w-full" />
+      </div>
+    </section>
+
+    <!-- Alerts -->
+    <section>
+      <h2 class="text-sm font-bold uppercase tracking-wider text-slate-500 mb-2">Предупреждения</h2>
+      <div id="alerts" class="space-y-2 text-xs"></div>
+    </section>
+
+    <!-- BOM -->
+    <section>
+      <h2 class="text-sm font-bold uppercase tracking-wider text-slate-500 mb-2">Спецификация (BOM)</h2>
+      <div class="border border-slate-200 rounded-lg overflow-hidden">
+        <table class="w-full text-xs">
+          <thead class="bg-slate-100 text-slate-500 text-left">
+            <tr>
+              <th class="px-2 py-2 font-semibold">Позиция</th>
+              <th class="px-2 py-2 font-semibold text-right">Кол-во</th>
+              <th class="px-2 py-2 font-semibold text-right">Сумма</th>
+            </tr>
+          </thead>
+          <tbody id="bomBody"></tbody>
+        </table>
+      </div>
+      <div id="costSummary" class="mt-3 text-xs text-slate-600 space-y-1"></div>
+    </section>
+  </aside>
+
+  <!-- ПРАВАЯ ПАНЕЛЬ: 3D -->
+  <main id="viewport" class="flex-1 relative">
+    <div class="absolute top-3 left-3 text-[11px] text-slate-500 bg-white/70 rounded px-2 py-1 backdrop-blur">
+      ЛКМ — вращение · колесо — зум · ПКМ — панорама
+    </div>
+  </main>
+</div>
+
+<script>
+/* =====================================================================================
+   ARGLASS — Калькулятор-визуализатор навеса
+   Архитектура (4 модуля):
+     1) ENGINE  — инженерная логика и каркас (геометрия, раскладка стоек/стропил/фермы)
+     2) PRICING — ценообразование (металл / алюминий)
+     3) VIEWER  — 3D-визуализация (Three.js)
+     4) UI      — связывание контролов, BOM, alerts, итоговые цифры
+   Маржа клиента: (Материалы + Монтаж + Доставка + Покраска) * 1.8
+   Все цены в USD.
+   ===================================================================================== */
+
+/* ---------- Глобальные константы ---------- */
+const SLOPE_DEG = 7;
+const SLOPE = SLOPE_DEG * Math.PI / 180;
+const TAN = Math.tan(SLOPE);            // ≈ 0.12278
+const COS = Math.cos(SLOPE);            // ≈ 0.99255
+const MARGIN = 1.8;
+const MAX_SPAN = 4.0;                   // макс. пролёт между стойками, м
+const TRUSS_MIN_D = 5.0;                // ферма добавляется при D >= 5 м
+const KG_PRICE = 0.85;                  // $/кг для всех стальных профилей
+const DELIVERY_PER_KM = 2 / 3;          // $0.66 за км
+
+/* =====================================================================================
+   МОДУЛЬ 1: ENGINE — инженерная логика
+   ===================================================================================== */
+const ENGINE = {
+  /* Раскладка стоек по ширине: макс. пролёт 4 м, симметрично. */
+  postsPerRow(W) {
+    const spans = Math.max(1, Math.ceil(W / MAX_SPAN));
+    return spans + 1; // стоек в ряду = пролётов + 1
+  },
+
+  /* X-координаты стоек, центрировано относительно 0. */
+  postXs(W) {
+    const n = this.postsPerRow(W);
+    const xs = [];
+    for (let i = 0; i < n; i++) xs.push(-W / 2 + (W * i) / (n - 1));
+    return xs;
+  },
+
+  /* Раскладка стропил: шаг ~1 м (0.9–1.15) с оптимизацией раскроя.
+     Берём минимально возможное число ячеек (макс. допустимый шаг <= 1.15).
+     Пример: W=10 → ceil(10/1.15)=9 ячеек по 1.111 м. */
+  rafters(W) {
+    const cells = Math.max(1, Math.ceil(W / 1.15));
+    const spacing = W / cells;
+    return { cells, count: cells + 1, spacing };
+  },
+
+  /* Длина стропила по скату (с уклоном 7°). */
+  rafterLength(D) { return D / COS; },
+
+  /* Полная инженерная модель. */
+  build(p) {
+    const { W, D, H, type } = p;
+    const ppr = this.postsPerRow(W);
+    const xs = this.postXs(W);
+    const raft = this.rafters(W);
+    const lowY = H - D * TAN;            // высота низкой части
+    const midY = H - (D / 2) * TAN;      // высота на середине вылета (под ферму)
+    const hasTruss = D >= TRUSS_MIN_D;
+
+    // Высоты стоек по рядам
+    // wall: высокая часть у стены (z=0, без стоек), низкая на стойках (z=D)
+    // free: высокая часть на передних стойках (z=D), низкая на задних (z=0)
+    let posts = []; // {x, z, top}  — top = высота верха стойки
+    if (type === 'wall') {
+      xs.forEach(x => posts.push({ x, z: D, top: lowY, role: 'front' }));
+    } else {
+      xs.forEach(x => posts.push({ x, z: D, top: H, role: 'front' }));      // передние (высокие)
+      xs.forEach(x => posts.push({ x, z: 0, top: lowY, role: 'back' }));    // задние (низкие)
+    }
+    // промежуточные стойки под ферму
+    if (hasTruss) xs.forEach(x => posts.push({ x, z: D / 2, top: midY, role: 'truss' }));
+
+    const totalPosts = posts.length;
+    const frontRowPosts = ppr; // стойки, на которых стоит лобовая балка
+
+    // Стекло: вылет под водосток по 10 см с каждой стороны
+    const glassW = W + 0.2;
+    const glassD = (type === 'wall') ? D + 0.1 : D + 0.2;
+    const glassArea = glassW * glassD;
+
+    // Площадь навеса (по габаритам каркаса) — для выбора алюм. серии
+    const frameArea = W * D;
+
+    // Суммарная длина стоек (для металла)
+    const postLenTotal = posts.reduce((s, p) => s + p.top, 0);
+
+    return {
+      W, D, H, type,
+      ppr, xs, posts, totalPosts, frontRowPosts,
+      rafters: raft, rafterLen: this.rafterLength(D),
+      lowY, midY, hasTruss,
+      glassW, glassD, glassArea, frameArea,
+      postLenTotal,
+    };
+  }
+};
+
+/* =====================================================================================
+   МОДУЛЬ 2: PRICING — ценообразование
+   ===================================================================================== */
+const PRICING = {
+  // профили: вес кг/м
+  STEEL: {
+    p100x100: 9.08,
+    p100x60: 7.21,
+    p60x60: 5.25,
+  },
+
+  /* Покупка стального профиля хлыстами по 6 м, цена по весу. */
+  buySteel(lengthTotal, kgPerM) {
+    const sticks = Math.max(0, Math.ceil(lengthTotal / 6));
+    const weightUsed = lengthTotal * kgPerM;       // фактический вес конструкции
+    const weightBought = sticks * 6 * kgPerM;      // вес купленного (с запасом)
+    const cost = weightBought * KG_PRICE;
+    return { sticks, weightUsed, weightBought, cost };
+  },
+
+  glassPricePerM2(glassType) {
+    return glassType === 'clear' ? 40 : 73;
+  },
+
+  /* ---------- МЕТАЛЛ ---------- */
+  steel(g, p) {
+    const S = this.STEEL;
+    const bom = [];
+
+    // Длины профилей
+    const len100x100 = g.postLenTotal + g.W;                 // стойки + лобовая
+    const len100x60  = g.rafters.count * g.rafterLen          // стропила
+                     + g.W                                    // пристенная/задняя балка
+                     + (g.hasTruss ? g.W : 0);                // верхний пояс фермы
+    const len60x60   = g.hasTruss ? g.W : 0;                  // нижний пояс фермы (красный)
+
+    const b100 = this.buySteel(len100x100, S.p100x100);
+    const b60  = this.buySteel(len100x60,  S.p100x60);
+    const bT   = this.buySteel(len60x60,   S.p60x60);
+
+    const metalWeight = b100.weightUsed + b60.weightUsed + bT.weightUsed;
+
+    bom.push({ name: 'Профиль 100×100×3 (стойки, лобовая)', qty: `${b100.sticks} хл / ${Math.round(b100.weightUsed)} кг`, cost: b100.cost });
+    bom.push({ name: 'Профиль 100×60×3 (стропила, балка)', qty: `${b60.sticks} хл / ${Math.round(b60.weightUsed)} кг`, cost: b60.cost });
+    if (g.hasTruss) bom.push({ name: 'Профиль 60×60×3 (ферма)', qty: `${bT.sticks} хл / ${Math.round(bT.weightUsed)} кг`, cost: bT.cost });
+
+    // Прижимная планка с крышкой: хлыстов = кол-ву стропил
+    const clampCount = g.rafters.count;
+    const clampCost = clampCount * 27;
+    bom.push({ name: 'Прижимная планка с крышкой', qty: `${clampCount} хл`, cost: clampCost });
+
+    // Стекло
+    const glassUnit = this.glassPricePerM2(p.glass);
+    const glassCost = g.glassArea * glassUnit;
+    bom.push({ name: `Стекло (${g.glassArea.toFixed(2)} м²)`, qty: `${g.glassArea.toFixed(2)} м²`, cost: glassCost });
+
+    // Вспененная лента
+    const foam = g.rafters.count <= 3 ? 20 : 40;
+    bom.push({ name: 'Вспененная лента (прокладка)', qty: '—', cost: foam });
+
+    // Крепежи: 80 + 1*вес + 1*площадь, ≤150
+    const fasteners = Math.min(150, 80 + metalWeight + g.glassArea);
+    bom.push({ name: 'Крепежи', qty: '—', cost: fasteners });
+
+    // Водосточка: 80 + 2*площадь, ≤150
+    const drainage = Math.min(150, 80 + 2 * g.glassArea);
+    bom.push({ name: 'Водосточная система', qty: '—', cost: drainage });
+
+    // Покраска порошковая по весу
+    let paint;
+    if (metalWeight <= 300) paint = 100;
+    else if (metalWeight <= 500) paint = 120;
+    else if (metalWeight <= 800) paint = 150;
+    else paint = 180;
+
+    // Монтаж
+    const mountFrame = metalWeight * 1.3;
+    const mountGlass = g.glassArea * 15;
+
+    // Доставка
+    const delivery = p.km * DELIVERY_PER_KM;
+
+    const materials = b100.cost + b60.cost + bT.cost + clampCost + glassCost + foam + fasteners + drainage;
+    const mounting = mountFrame + mountGlass;
+
+    return this.finalize(bom, { materials, mounting, paint, delivery, glassArea: g.glassArea, metalWeight });
+  },
+
+  /* ---------- АЛЮМИНИЙ ---------- */
+  alu(g, p) {
+    const bom = [];
+
+    // Стойки + лобовая: ВСЕГДА 150-я серия (хлысты 6.8 м, $140)
+    const lenPostsLob = g.postLenTotal + g.W;
+    const sticks150PL = Math.ceil(lenPostsLob / 6.8);
+    const cost150PL = sticks150PL * 140;
+    bom.push({ name: 'Алюм. 150 (стойки + лобовая)', qty: `${sticks150PL} хл`, cost: cost150PL });
+
+    // Стропила + балки: <6 м² → 100-я (6 м, $60); >=6 м² → 150-я (6.8 м, $140)
+    const use150 = g.frameArea >= 6;
+    const lenRB = g.rafters.count * g.rafterLen + g.W + (g.hasTruss ? 2 * g.W : 0);
+    const stockRB = use150 ? 6.8 : 6;
+    const priceRB = use150 ? 140 : 60;
+    const sticksRB = Math.ceil(lenRB / stockRB);
+    const costRB = sticksRB * priceRB;
+    bom.push({ name: `Алюм. ${use150 ? '150' : '100'} (стропила + балки)`, qty: `${sticksRB} хл`, cost: costRB });
+
+    // Прижимная планка: на ВСЕ стойки, КРОМЕ тех, на которых лобовая балка (передний ряд)
+    const clampCount = Math.max(0, g.totalPosts - g.frontRowPosts);
+    const clampCost = clampCount * 27;
+    bom.push({ name: 'Прижимная планка с крышкой', qty: `${clampCount} хл`, cost: clampCost });
+
+    // Резина на прижимку: кол-во прижимок * 12 м, $0.4/м
+    const rubClampLen = clampCount * 12;
+    const rubClampCost = rubClampLen * 0.4;
+    bom.push({ name: 'Резина на прижимку', qty: `${rubClampLen} м.п.`, cost: rubClampCost });
+
+    // Резина для стоек: кол-во всех стоек * 12 м, $0.7/м
+    const rubPostLen = g.totalPosts * 12;
+    const rubPostCost = rubPostLen * 0.7;
+    bom.push({ name: 'Резина для стоек', qty: `${rubPostLen} м.п.`, cost: rubPostCost });
+
+    // Сухарный профиль: всегда 1 м.п., $62
+    const suharCost = 1 * 62;
+    bom.push({ name: 'Сухарный профиль', qty: '1 м.п.', cost: suharCost });
+
+    // Химический анкер: фикс $16.6
+    const anchorCost = 16.6;
+    bom.push({ name: 'Химический анкер', qty: '—', cost: anchorCost });
+
+    // Стекло
+    const glassUnit = this.glassPricePerM2(p.glass);
+    const glassCost = g.glassArea * glassUnit;
+    bom.push({ name: `Стекло (${g.glassArea.toFixed(2)} м²)`, qty: `${g.glassArea.toFixed(2)} м²`, cost: glassCost });
+
+    // Полимерная покраска: (стойки + прижимки) * 6 м.п., $1.4/м
+    const paintMp = (g.totalPosts + clampCount) * 6;
+    const paint = paintMp * 1.4;
+
+    // Монтаж: база $750 для площади остекления 36 м² (6×3), допуск [31; 43]
+    let mounting = 750;
+    const a = g.glassArea;
+    if (a < 31) mounting = 750 - (31 - a) * 20;
+    else if (a > 43) mounting = 750 + (a - 43) * 20;
+    mounting = Math.max(0, mounting);
+
+    // Доставка
+    const delivery = p.km * DELIVERY_PER_KM;
+
+    const materials = cost150PL + costRB + clampCost + rubClampCost + rubPostCost + suharCost + anchorCost + glassCost;
+
+    return this.finalize(bom, { materials, mounting, paint, delivery, glassArea: g.glassArea, metalWeight: 0 });
+  },
+
+  /* Применение маржи 1.8 и сборка итогов. */
+  finalize(bom, c) {
+    const subtotal = c.materials + c.mounting + c.delivery + c.paint;
+    const total = subtotal * MARGIN;
+    const perM2 = c.glassArea > 0 ? total / c.glassArea : 0;
+    return {
+      bom,
+      breakdown: c,
+      subtotal,
+      total,
+      perM2,
+    };
+  },
+
+  compute(g, p) {
+    return p.material === 'alu' ? this.alu(g, p) : this.steel(g, p);
+  }
+};
+
+/* =====================================================================================
+   МОДУЛЬ 3: VIEWER — 3D-визуализация (Three.js)
+   ===================================================================================== */
+const VIEWER = {
+  init() {
+    const el = document.getElementById('viewport');
+    this.el = el;
+
+    this.scene = new THREE.Scene(); // фон даёт CSS-градиент контейнера
+
+    this.camera = new THREE.PerspectiveCamera(45, el.clientWidth / el.clientHeight, 0.1, 200);
+    this.camera.position.set(9, 7, 11);
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setSize(el.clientWidth, el.clientHeight);
+    this.renderer.shadowMap.enabled = true;
+    el.appendChild(this.renderer.domElement);
+
+    this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.target.set(0, 1.5, 0);
+
+    // Свет
+    const amb = new THREE.AmbientLight(0xffffff, 0.75);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+    dir.position.set(8, 14, 6);
+    dir.castShadow = true;
+    this.scene.add(amb, dir);
+
+    // Земля
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(60, 60),
+      new THREE.MeshStandardMaterial({ color: 0xe9eef4, roughness: 1 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+    // лёгкая сетка для масштаба
+    const grid = new THREE.GridHelper(60, 60, 0xcbd5e1, 0xdfe6ee);
+    grid.position.y = 0.001;
+    this.scene.add(grid);
+
+    // Корневая группа модели
+    this.root = new THREE.Group();
+    this.scene.add(this.root);
+
+    // Материалы каркаса/стекла
+    this.mat = {
+      steel: new THREE.MeshStandardMaterial({ color: 0x141414, metalness: 0.6, roughness: 0.45 }),
+      alu:   new THREE.MeshStandardMaterial({ color: 0x6b7280, metalness: 0.8, roughness: 0.35 }),
+      truss: new THREE.MeshStandardMaterial({ color: 0xcc2222, metalness: 0.5, roughness: 0.5 }),
+      wall:  new THREE.MeshStandardMaterial({ color: 0xd6d3cb, roughness: 1 }),
+    };
+    this.glassMats = {
+      clear:    new THREE.MeshPhysicalMaterial({ color: 0xbfe4f5, transparent: true, opacity: 0.35, roughness: 0.05, metalness: 0, transmission: 0.6 }),
+      bronze:   new THREE.MeshPhysicalMaterial({ color: 0x8a6b3f, transparent: true, opacity: 0.5,  roughness: 0.08, metalness: 0 }),
+      graphite: new THREE.MeshPhysicalMaterial({ color: 0x3a3f45, transparent: true, opacity: 0.62, roughness: 0.08, metalness: 0 }),
+    };
+
+    window.addEventListener('resize', () => this.onResize());
+    this.animate();
+  },
+
+  onResize() {
+    const el = this.el;
+    this.camera.aspect = el.clientWidth / el.clientHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(el.clientWidth, el.clientHeight);
+  },
+
+  animate() {
+    requestAnimationFrame(() => this.animate());
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  },
+
+  clearRoot() {
+    while (this.root.children.length) {
+      const c = this.root.children.pop();
+      c.geometry && c.geometry.dispose();
+    }
+  },
+
+  /* Балка/стержень между двумя точками с заданным прямоугольным сечением.
+     Сечение (sx — поперёк, sy — толщина) лежит в локальной плоскости XY,
+     длина откладывается вдоль Z и поворачивается к направлению p1-p0. */
+  beam(p0, p1, sx, sy, material) {
+    const a = new THREE.Vector3(p0.x, p0.y, p0.z);
+    const b = new THREE.Vector3(p1.x, p1.y, p1.z);
+    const dir = new THREE.Vector3().subVectors(b, a);
+    const len = dir.length();
+    if (len < 1e-6) return null;
+    const geo = new THREE.BoxGeometry(sx, sy, len);
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.castShadow = true;
+    mesh.position.copy(a).addScaledVector(dir, 0.5);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.clone().normalize());
+    this.root.add(mesh);
+    return mesh;
+  },
+
+  /* Полная перестройка сцены под текущую геометрию. */
+  render(g, p) {
+    this.clearRoot();
+    const frameMat = p.material === 'alu' ? this.mat.alu : this.mat.steel;
+
+    // Сечения профилей (визуально). Алюм. 150 — вытянутый прямоугольник.
+    const isAlu = p.material === 'alu';
+    const secPost   = isAlu ? { x: 0.15, y: 0.05 } : { x: 0.10, y: 0.10 }; // стойки/лобовая
+    const secRafter = isAlu ? (g.frameArea >= 6 ? { x: 0.15, y: 0.05 } : { x: 0.10, y: 0.05 })
+                            : { x: 0.10, y: 0.06 };                          // стропила/балки
+
+    const { W, D, H, type } = g;
+    const xL = -W / 2, xR = W / 2;
+
+    // --- Стена (только для пристенного) ---
+    if (type === 'wall') {
+      const wall = new THREE.Mesh(
+        new THREE.BoxGeometry(W + 1.2, H + 0.6, 0.15),
+        this.mat.wall
+      );
+      wall.position.set(0, (H + 0.6) / 2, -0.1);
+      wall.receiveShadow = true;
+      this.root.add(wall);
+    }
+
+    // --- Стойки ---
+    g.posts.forEach(po => {
+      const mat = po.role === 'truss' ? frameMat : frameMat;
+      // алюм. стойку (вытянутую) разворачиваем длинной стороной по X
+      this.beam({ x: po.x, y: 0, z: po.z }, { x: po.x, y: po.top, z: po.z }, secPost.x, secPost.y, mat);
+    });
+
+    // --- Балки (вдоль X) ---
+    if (type === 'wall') {
+      // лобовая (низ, на стойках z=D) — 100x100/150
+      this.beam({ x: xL, y: g.lowY, z: D }, { x: xR, y: g.lowY, z: D }, secPost.x, secPost.y, frameMat);
+      // пристенная (верх, у стены z=0) — 100x60
+      this.beam({ x: xL, y: H, z: 0 }, { x: xR, y: H, z: 0 }, secRafter.x, secRafter.y, frameMat);
+    } else {
+      // лобовая (верх, передние стойки z=D)
+      this.beam({ x: xL, y: H, z: D }, { x: xR, y: H, z: D }, secPost.x, secPost.y, frameMat);
+      // задняя (низ, задние стойки z=0)
+      this.beam({ x: xL, y: g.lowY, z: 0 }, { x: xR, y: g.lowY, z: 0 }, secRafter.x, secRafter.y, frameMat);
+    }
+
+    // --- Стропила (по скату, между высокой и низкой кромками) ---
+    // Pivot: кромки на z=0 и z=D, наклон формируется автоматически beam().
+    const hi = type === 'wall' ? { y: H, z: 0 } : { y: H, z: D };
+    const lo = type === 'wall' ? { y: g.lowY, z: D } : { y: g.lowY, z: 0 };
+    const n = g.rafters.count;
+    for (let i = 0; i < n; i++) {
+      const x = xL + (W * i) / (n - 1);
+      this.beam({ x, y: hi.y, z: hi.z }, { x, y: lo.y, z: lo.z }, secRafter.x, secRafter.y, frameMat);
+    }
+
+    // --- Ферма (только D >= 5 м), по центру вылета z = D/2, красный нижний пояс ---
+    if (g.hasTruss) {
+      const zC = D / 2;
+      const topY = g.midY;
+      const botY = g.midY - 0.5;
+      // верхний пояс 100x60
+      this.beam({ x: xL, y: topY, z: zC }, { x: xR, y: topY, z: zC }, 0.10, 0.06, frameMat);
+      // нижний пояс 60x60 (красный)
+      this.beam({ x: xL, y: botY, z: zC }, { x: xR, y: botY, z: zC }, 0.06, 0.06, this.mat.truss);
+      // раскосы фермы
+      g.xs.forEach(x => {
+        this.beam({ x, y: topY, z: zC }, { x, y: botY, z: zC }, 0.05, 0.05, this.mat.truss);
+      });
+    }
+
+    // --- Стекло (выступает за каркас, наклон по скату) ---
+    const glassMat = this.glassMats[p.glass] || this.glassMats.clear;
+    const midY = (hi.y + lo.y) / 2;
+    const midZ = (hi.z + lo.z) / 2;
+    const glass = new THREE.Mesh(
+      new THREE.BoxGeometry(g.glassW, 0.025, g.glassD),
+      glassMat
+    );
+    // наклон: для wall +z ниже → rotation.x = +SLOPE; для free +z выше → -SLOPE
+    glass.rotation.x = (type === 'wall') ? SLOPE : -SLOPE;
+    glass.position.set(0, midY + 0.09, midZ);
+    this.root.add(glass);
+
+    // Центрируем камеру/таргет по модели
+    this.controls.target.set(0, Math.max(1.2, H * 0.55), D / 2);
+  }
+};
+
+/* =====================================================================================
+   МОДУЛЬ 4: UI — связывание
+   ===================================================================================== */
+const UI = {
+  fmt(n) {
+    return '$' + Math.round(n).toLocaleString('en-US');
+  },
+
+  read() {
+    return {
+      W: parseFloat(W.value),
+      D: parseFloat(D.value),
+      H: parseFloat(H.value),
+      type: type.value,
+      material: material.value,
+      glass: glass.value,
+      km: parseFloat(km.value),
+    };
+  },
+
+  refreshLabels(p) {
+    wVal.textContent = p.W.toFixed(2) + ' м';
+    dVal.textContent = p.D.toFixed(2) + ' м';
+    hVal.textContent = p.H.toFixed(2) + ' м';
+    kmVal.textContent = p.km + ' км';
+  },
+
+  renderBOM(res) {
+    const body = document.getElementById('bomBody');
+    body.innerHTML = '';
+    res.bom.forEach(row => {
+      const tr = document.createElement('tr');
+      tr.className = 'bom-row border-t border-slate-100';
+      tr.innerHTML = `
+        <td class="text-slate-700">${row.name}</td>
+        <td class="text-right text-slate-500 whitespace-nowrap">${row.qty}</td>
+        <td class="text-right font-semibold text-slate-800 whitespace-nowrap">$${row.cost.toFixed(2)}</td>`;
+      body.appendChild(tr);
+    });
+
+    const c = res.breakdown;
+    document.getElementById('costSummary').innerHTML = `
+      <div class="flex justify-between"><span>Материалы (себестоимость)</span><span>$${c.materials.toFixed(2)}</span></div>
+      <div class="flex justify-between"><span>Монтаж</span><span>$${c.mounting.toFixed(2)}</span></div>
+      <div class="flex justify-between"><span>Покраска</span><span>$${c.paint.toFixed(2)}</span></div>
+      <div class="flex justify-between"><span>Доставка</span><span>$${c.delivery.toFixed(2)}</span></div>
+      <div class="flex justify-between border-t border-slate-200 pt-1 font-semibold"><span>Себестоимость, итого</span><span>$${res.subtotal.toFixed(2)}</span></div>
+      <div class="flex justify-between text-emerald-700 font-bold"><span>× маржа 1.8 → клиенту</span><span>$${res.total.toFixed(2)}</span></div>`;
+  },
+
+  renderAlerts(g, p) {
+    const box = document.getElementById('alerts');
+    box.innerHTML = '';
+    const add = (type, text) => {
+      const colors = {
+        info: 'bg-sky-50 text-sky-800 border-sky-200',
+        warn: 'bg-amber-50 text-amber-800 border-amber-200',
+        ok:   'bg-emerald-50 text-emerald-800 border-emerald-200',
+      };
+      const d = document.createElement('div');
+      d.className = `border rounded-lg px-3 py-2 ${colors[type]}`;
+      d.textContent = text;
+      box.appendChild(d);
+    };
+
+    if (g.W > MAX_SPAN) add('info', `Ширина ${g.W.toFixed(1)} м > 4 м: добавлены стойки (${g.ppr} в ряду, макс. пролёт ${(g.W/(g.ppr-1)).toFixed(2)} м).`);
+    if (g.hasTruss) add('warn', `Вылет ${g.D.toFixed(1)} м ≥ 5 м: добавлена ферма усиления (z = ${ (g.D/2).toFixed(2)} м) и промежуточные стойки.`);
+    add('info', `Стропила: ${g.rafters.count} шт, шаг ${g.rafters.spacing.toFixed(3)} м.`);
+    add('ok', `Стекло с вылетом под водосток: ${g.glassW.toFixed(2)} × ${g.glassD.toFixed(2)} м = ${g.glassArea.toFixed(2)} м².`);
+    if (p.km >= 400) add('warn', 'Доставка на пределе диапазона (400 км).');
+  },
+
+  update() {
+    const p = this.read();
+    this.refreshLabels(p);
+    const g = ENGINE.build(p);
+    const res = PRICING.compute(g, p);
+
+    document.getElementById('totalPrice').textContent = this.fmt(res.total);
+    document.getElementById('pricePerM2').textContent = this.fmt(res.perM2) + '/м²';
+
+    this.renderBOM(res);
+    this.renderAlerts(g, p);
+    VIEWER.render(g, p);
+  },
+
+  init() {
+    ['W', 'D', 'H', 'km', 'type', 'material', 'glass'].forEach(id => {
+      document.getElementById(id).addEventListener('input', () => this.update());
+    });
+  }
+};
+
+/* ---------- Старт ---------- */
+window.addEventListener('DOMContentLoaded', () => {
+  VIEWER.init();
+  UI.init();
+  UI.update();
+});
+</script>
+</body>
+</html>
